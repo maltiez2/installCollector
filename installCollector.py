@@ -2,6 +2,7 @@
 
 import os
 import re
+import pwd
 import time
 import shutil
 import tarfile
@@ -18,29 +19,99 @@ class FileEntry:
     finalPath: str         # where to put it
     renameTo: str = ""     # what to rename to
     symLinkPath: str = ""  # what to link it to
+    regex: re.Pattern = None
 
 
 class Settings:
+    class SettingsInitError(Exception):
+        pass
+
+#******************************************************************************************************************************
+#********************************** SETTINGS START  ***************************************************************************
+#******************************************************************************************************************************
+
     collectorVersion = "3.0.5-develop"
     osVersion = "Ubuntu20_04LTS"
     llvm = True
+    llvmPattern = r".*/[^/]*llvm[^/]*$"
 
-    platformLocation = "/opt/solo/bin/platform"
-    jsonrpcLocation = "/opt/solo/bin/solo-jsonrpc"
-    librariesLocation = "/opt/solo/lib/"
     changeOwnerToCurrentUser = True
     changeOwnerTo = ""
+    folderToMount = "//collector-build.initi/build_repo/Develop/"
 
-    testFolder = os.getcwd() + "/test"
-    folderToMound = "//collector-build.initi/build_repo/Develop/"
-
-    pathToArchive = "/3.0.5-develop/Ubuntu20_04LTS/2022-09-20_104645/collector_llvm_2022-09-20_104645.tgz"
 
     files = [
-        FileEntry(r"solo-platform-0\.1\.0", "../test/")
-        #FileEntry(r"solo-jsonrpc-0\.1\.0",  "/opt/solo/bin/solo-jsonrpc"),
-        #FileEntry(r"lib[\w\.\-]*$",         "/opt/solo/lib/")
+        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "../test/",     renameTo = "platform",     symLinkPath = "" ),
+        FileEntry(pattern = r"solo-jsonrpc-0\.1\.0",  finalPath = "../test/",     renameTo = "solo-jsonrpc", symLinkPath = "" ),
+        FileEntry(pattern = r"lib[\w\.\-]*$",         finalPath = "../test/lib/", renameTo = "",             symLinkPath = "" )
     ]
+
+#******************************************************************************************************************************
+#********************************** SETTINGS END ******************************************************************************
+#******************************************************************************************************************************
+
+    def __init__(self):
+        self.printer = _SameLinePrinter()
+        self.checkUserExistance()
+        self.compileRegexes()
+
+    def checkUserExistance(self):
+        if self.changeOwnerTo != "":
+            try:
+                pwd.getpwnam(self.changeOwnerTo)
+            except KeyError as err:
+                raise self.SettingsInitError(f"User '{self.changeOwnerTo}' does not exist.")
+
+    def compileRegexes(self):
+        try:
+            self.llvmRegex = re.compile(self.llvmPattern)
+        except re.error as e:
+            raise self.SettingsInitError(f"Error in llvm regex pattern: '{self.llvmPattern}'")
+
+        for entry in self.files:
+            try:
+                entry.regex = re.compile(f"\\./{entry.pattern}")
+            except re.error as e:
+                raise self.SettingsInitError(f"Error in regex pattern: '{entry.pattern}'")
+
+
+class _Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(_Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class _SameLinePrinter(metaclass=_Singleton):
+    def __init__(self):
+        self._maxSize = 0
+        self._stopped = True
+
+    def print(self, printString):
+        printStringLength = len(printString)
+        if (printStringLength > self._maxSize):
+            self._maxSize = printStringLength
+        for i in range(self._maxSize - printStringLength):
+            printString += " "
+        print(printString, end='\r')
+        self._stopped = False
+
+    def clear(self):
+        if not self._stopped:
+            printingString = ""
+            for i in range(self._maxSize):
+                printingString += " "
+            self._maxSize = 0
+            print(printingString, end='\r')
+            self._stopped = True
+
+    def stop(self):
+        if not self._stopped:
+            self._maxSize = 0
+            print("")
+            self._stopped = True
 
 
 class RemoteFolder:
@@ -74,39 +145,90 @@ class RemoteFolder:
         return subprocess.call(["umount", "-f", localFolder])
 
 
-def extract(settings, archive):
-    archiveMembers = archive.getmembers()
+class FilesExtractor:
+    def __init__(self, settings, archive):
+        self.settings = settings
+        self.archive = archive
+        self.filesProcessed = 0
 
-    for fileEntry in settings.files:
-        regex = re.compile(f"\\./{fileEntry.pattern}")
-        for member in archiveMembers:
-            if not member.isdir() and regex.match(member.name):
-                print(f"Extracting '{member.name}' to '{fileEntry.finalPath}'")
-                archive.extract(member, fileEntry.finalPath);
-                if settings.changeOwnerToCurrentUser or settings.changeOwnerTo:
+    def extract(self):
+        self.settings.printer.print(f"Getting archive files list (it may take a while)")
+        archiveMembers = self.archive.getmembers()
+
+        self.filesProcessed = 0
+
+        for fileEntry in self.settings.files:
+            for member in archiveMembers:
+                if not member.isdir() and fileEntry.regex.match(member.name):
+                    self.settings.printer.print(f"({self.filesProcessed + 1}) Extracting '{member.name}' to '{fileEntry.finalPath}'")
+                    self.archive.extract(member, fileEntry.finalPath);
                     fileName = Path(member.name).name
                     filePath = Path(fileEntry.finalPath, fileName)
-                    if filePath.exists():
-                        print(f"Changing this file owner to '{os.getlogin()}'")
-                        if settings.changeOwnerToCurrentUser:
-                            shutil.chown(filePath, os.getlogin())
-                        else:
-                            shutil.chown(filePath, settings.changeOwnerTo)
+                    self.changeFileOwner(filePath)
+                    self.renameFile(filePath, fileEntry)
+                    self.filesProcessed += 1
 
+        self.settings.printer.print(f"Files extracted: {self.filesProcessed}")
+        self.settings.printer.stop()
+
+
+    def changeFileOwner(self, filePath):
+        if filePath.exists() and (self.settings.changeOwnerToCurrentUser or self.settings.changeOwnerTo):
+            self.settings.printer.print(f"({self.filesProcessed + 1}) Changing '{filePath.name}' owner to '{os.getlogin()}'")
+            if self.settings.changeOwnerToCurrentUser:
+                shutil.chown(filePath, os.getlogin())
+            else:
+                shutil.chown(filePath, self.settings.changeOwnerTo)
+
+
+    def renameFile(self, filePath, fileEntry):
+        if filePath.exists() and fileEntry.renameTo:
+            newFile = Path(filePath.parent, fileEntry.renameTo)
+            self.settings.printer.print(f"({self.filesProcessed + 1}) Renaming '{filePath.name}' to '{newFile.name}'")
+            filePath.rename(newFile)
+
+
+def getArchivePath(settings, remoteFolder):
+    archivePath = Path(remoteFolder, settings.collectorVersion)
+    if not archivePath.exists():
+        settings.printer.print(f"Could not find collector version folder: '{settings.collectorVersion}' in '{archivePath.parent}'")
+        settings.printer.stop()
+        return None
+
+    archivePath = Path(archivePath, settings.osVersion)
+    if not archivePath.exists():
+        settings.printer.print(f"Could not find os version folder: '{settings.collectorVersion}' in '{archivePath.parent}'")
+        settings.printer.stop()
+        return None
+
+    archivePath = max(archivePath.iterdir())
+
+    for archiveFile in archivePath.iterdir():
+        if settings.llvm and settings.llvmRegex.match(f'{archiveFile}'):
+            return archiveFile
+        elif not settings.llvm and not settings.llvmRegex.match(f'{archiveFile}'):
+            return archiveFile
+    return None
 
 
 
 
 def main():
-    settings = Settings()
+    try:
+        settings = Settings()
+    except Settings.SettingsInitError as err:
+        print(err)
+        return err
 
-    with RemoteFolder(Settings.folderToMound, Settings.testFolder) as localFolder:
-        print(localFolder)
-        with tarfile.open(f"{localFolder}{Settings.pathToArchive}", 'r') as archive:
-            extract(settings, archive)
+    with RemoteFolder(Settings.folderToMount, os.getcwd()) as localFolder:
+        archivePath = getArchivePath(settings, localFolder)
+        print(archivePath)
+        if archivePath:
+            with tarfile.open(archivePath, 'r') as archive:
+                FilesExtractor(settings, archive).extract()
+
+    settings.printer.stop()
 
 
 if __name__ == '__main__':
-    print("************************\n")
     main()
-    print("\n************************")
