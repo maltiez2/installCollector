@@ -35,14 +35,14 @@ class Settings:
     llvm = True
     llvmPattern = r".*/[^/]*llvm[^/]*$"
 
-    changeOwnerToCurrentUser = True
-    changeOwnerTo = ""
+    changeOwnerToCurrentUser = False
+    changeOwnerTo = "initi-svc"
     folderToMount = "//collector-build.initi/build_repo/Develop/"
 
     files = [
-        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "../test/",     renameTo = "platform",     symLinkPath = "platform" ),
-        FileEntry(pattern = r"solo-jsonrpc-0\.1\.0",  finalPath = "../test/",     renameTo = "solo-jsonrpc", symLinkPath = "" ),
-        FileEntry(pattern = r"lib[\w\.\-]*$",         finalPath = "../test/lib/", renameTo = "",             symLinkPath = "" )
+        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "/opt/solo/bin", renameTo = "platform",     symLinkPath = ""),
+        FileEntry(pattern = r"solo-jsonrpc-0\.1\.0",  finalPath = "/opt/solo/bin", renameTo = "solo-jsonrpc", symLinkPath = ""),
+        FileEntry(pattern = r"lib[\w\.\-]*$",         finalPath = "/opt/solo/lib", renameTo = "",             symLinkPath = "")
     ]
 
 #******************************************************************************************************************************
@@ -168,9 +168,6 @@ class FilesExtractor:
                     self.genSymlink(filePath, fileEntry)
                     self.filesProcessed += 1
 
-        self.settings.printer.print(f"Files extracted: {self.filesProcessed}")
-        self.settings.printer.stop()
-
 
     def changeFileOwner(self, filePath):
         if filePath.exists() and (self.settings.changeOwnerToCurrentUser or self.settings.changeOwnerTo):
@@ -196,6 +193,7 @@ class FilesExtractor:
             if symLinkPath.exists():
                 os.remove(symLinkPath)
             symLinkPath.symlink_to(filePath)
+            self.settings.printer.print(f"({self.filesProcessed + 1}) Linking '{symLinkPath.name}' to '{filePath.name}'")
             self.changeFileOwner(symLinkPath)
 
 
@@ -233,10 +231,11 @@ def main():
 
     with RemoteFolder(Settings.folderToMount, os.getcwd()) as localFolder:
         archivePath = getArchivePath(settings, localFolder)
-        print(archivePath)
         if archivePath:
             with tarfile.open(archivePath, 'r') as archive:
-                FilesExtractor(settings, archive).extract()
+                extractor = FilesExtractor(settings, archive)
+                extractor.extract()
+                settings.printer.print(f"Files extracted: {extractor.filesProcessed} from '{archivePath}'")
 
     settings.printer.stop()
 
