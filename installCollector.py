@@ -3,7 +3,7 @@
 import os
 import re
 import pwd
-import time
+import json
 import shutil
 import tarfile
 import datetime
@@ -18,7 +18,7 @@ class FileEntry:
     pattern: str           # what to look for
     finalPath: str         # where to put it
     renameTo: str = ""     # what to rename to
-    symLinkPath: str = ""  # what to link it to - TODO
+    symLinkPath: str = ""  # what to link it to
     regex: re.Pattern = None
 
 
@@ -26,30 +26,44 @@ class Settings:
     class SettingsInitError(Exception):
         pass
 
-#******************************************************************************************************************************
-#********************************** SETTINGS START  ***************************************************************************
-#******************************************************************************************************************************
+    defaultSettings = {
+        "collectorVersion" : "",
+        "osVersion" : "",
+        "llvm" : False,
+        "changeOwnerToCurrentUser" : False,
+        "changeOwnerTo" : "",
+        "folderToMount" : "",
+        "filesToExtract" : [
+            {"pattern" : "regex_of_file_name_in_archive", "finalPath" : "folder_to_extract_to", "renameTo" : "", "symLinkPath" : ""}
+        ]
+    }
 
-    collectorVersion = "3.0.5-develop"
-    osVersion = "Ubuntu20_04LTS"
-    llvm = True
+    configFileName = "installCollectorConfig.json"
+
     llvmPattern = r".*/[^/]*llvm[^/]*$"
 
-    changeOwnerToCurrentUser = False
-    changeOwnerTo = "initi-svc"
-    folderToMount = "//collector-build.initi/build_repo/Develop/"
-
-    files = [
-        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "/opt/solo/bin", renameTo = "platform",     symLinkPath = ""),
-        FileEntry(pattern = r"solo-jsonrpc-0\.1\.0",  finalPath = "/opt/solo/bin", renameTo = "solo-jsonrpc", symLinkPath = ""),
-        FileEntry(pattern = r"lib[\w\.\-]*$",         finalPath = "/opt/solo/lib", renameTo = "",             symLinkPath = "")
-    ]
-
-#******************************************************************************************************************************
-#********************************** SETTINGS END ******************************************************************************
-#******************************************************************************************************************************
-
     def __init__(self):
+        if not Path(self.configFileName).exists():
+            with open(self.configFileName, 'w') as configFile:
+                json.dump(self.defaultSettings, configFile)
+                shutil.chown(self.configFileName, os.getlogin())
+                self.SettingsInitError(f"Default config file '{self.configFileName}' was created, edit it before starting script")
+        else:
+            with open(self.configFileName, 'r') as configFile:
+                config = json.load(configFile)
+                try:
+                    self.collectorVersion         = config["collectorVersion"]
+                    self.osVersion                = config["osVersion"]
+                    self.llvm                     = config["llvm"]
+                    self.changeOwnerToCurrentUser = config["changeOwnerToCurrentUser"]
+                    self.changeOwnerTo            = config["changeOwnerTo"]
+                    self.folderToMount            = config["folderToMount"]
+                    self.files = []
+                    for entry in config["filesToExtract"]:
+                        self.files.append(FileEntry(pattern = entry["pattern"], finalPath = entry["finalPath"], renameTo = entry["renameTo"], symLinkPath = entry["symLinkPath"]))
+                except Exception as exception:
+                    self.SettingsInitError(f"Error while extracting config data from '{self.configFileName}':\n{exception}")
+
         self.printer = _SameLinePrinter()
         self.checkUserExistance()
         self.compileRegexes()
@@ -206,7 +220,7 @@ def getArchivePath(settings, remoteFolder):
 
     archivePath = Path(archivePath, settings.osVersion)
     if not archivePath.exists():
-        settings.printer.print(f"Could not find os version folder: '{settings.collectorVersion}' in '{archivePath.parent}'")
+        settings.printer.print(f"Could not find os version folder: '{settings.osVersion}' in '{archivePath.parent}'")
         settings.printer.stop()
         return None
 
@@ -229,7 +243,7 @@ def main():
         print(err)
         return err
 
-    with RemoteFolder(Settings.folderToMount, os.getcwd()) as localFolder:
+    with RemoteFolder(settings.folderToMount, os.getcwd()) as localFolder:
         archivePath = getArchivePath(settings, localFolder)
         if archivePath:
             with tarfile.open(archivePath, 'r') as archive:
