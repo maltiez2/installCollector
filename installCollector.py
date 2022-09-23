@@ -18,7 +18,7 @@ class FileEntry:
     pattern: str           # what to look for
     finalPath: str         # where to put it
     renameTo: str = ""     # what to rename to
-    symLinkPath: str = ""  # what to link it to
+    symLinkPath: str = ""  # what to link it to - TODO
     regex: re.Pattern = None
 
 
@@ -39,9 +39,8 @@ class Settings:
     changeOwnerTo = ""
     folderToMount = "//collector-build.initi/build_repo/Develop/"
 
-
     files = [
-        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "../test/",     renameTo = "platform",     symLinkPath = "" ),
+        FileEntry(pattern = r"solo-platform-0\.1\.0", finalPath = "../test/",     renameTo = "platform",     symLinkPath = "platform" ),
         FileEntry(pattern = r"solo-jsonrpc-0\.1\.0",  finalPath = "../test/",     renameTo = "solo-jsonrpc", symLinkPath = "" ),
         FileEntry(pattern = r"lib[\w\.\-]*$",         finalPath = "../test/lib/", renameTo = "",             symLinkPath = "" )
     ]
@@ -165,7 +164,8 @@ class FilesExtractor:
                     fileName = Path(member.name).name
                     filePath = Path(fileEntry.finalPath, fileName)
                     self.changeFileOwner(filePath)
-                    self.renameFile(filePath, fileEntry)
+                    filePath = self.renameFile(filePath, fileEntry)
+                    self.genSymlink(filePath, fileEntry)
                     self.filesProcessed += 1
 
         self.settings.printer.print(f"Files extracted: {self.filesProcessed}")
@@ -186,6 +186,17 @@ class FilesExtractor:
             newFile = Path(filePath.parent, fileEntry.renameTo)
             self.settings.printer.print(f"({self.filesProcessed + 1}) Renaming '{filePath.name}' to '{newFile.name}'")
             filePath.rename(newFile)
+            return newFile
+        else:
+            return filePath
+
+    def genSymlink(self, filePath, fileEntry):
+        if filePath.exists() and fileEntry.symLinkPath:
+            symLinkPath = Path(fileEntry.symLinkPath)
+            if symLinkPath.exists():
+                os.remove(symLinkPath)
+            symLinkPath.symlink_to(filePath)
+            self.changeFileOwner(symLinkPath)
 
 
 def getArchivePath(settings, remoteFolder):
