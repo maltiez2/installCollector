@@ -152,12 +152,17 @@ class RemoteFolder:
         if self.errCode == 0:
             return self.localFolder
         else:
+            os.rmdir(self.localFolder)
             return None
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.localFolder.exists():
-            self.errCode = self._umount(self.localFolder)
-            if self.errCode == 0:
+            try:
+                self.errCode = self._umount(self.localFolder)
+            except Exception as exception:
+                os.rmdir(self.localFolder)
+                raise exception
+            else:
                 os.rmdir(self.localFolder)
 
     def _mount(self, remoteFolder, localFolder):
@@ -246,7 +251,7 @@ def getArchivePath(settings, remoteFolder):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessery. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
+    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessary. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
     parser.add_argument("-c", "--config", default="installCollectorConfig.json", help="path to config file")
     args = parser.parse_args()
     settings = None
@@ -258,12 +263,13 @@ def main():
         return err
 
     with RemoteFolder(settings.folderToMount, os.getcwd()) as localFolder:
-        archivePath = getArchivePath(settings, localFolder)
-        if archivePath:
-            with tarfile.open(archivePath, 'r') as archive:
-                extractor = FilesExtractor(settings, archive)
-                extractor.extract()
-                settings.printer.print(f"Files extracted: {extractor.filesProcessed} from '{archivePath}'")
+        if localFolder:
+            archivePath = getArchivePath(settings, localFolder)
+            if archivePath:
+                with tarfile.open(archivePath, 'r') as archive:
+                    extractor = FilesExtractor(settings, archive)
+                    extractor.extract()
+                    settings.printer.print(f"Files extracted: {extractor.filesProcessed} from '{archivePath}'")
 
     settings.printer.stop()
 
