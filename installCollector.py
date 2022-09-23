@@ -71,7 +71,7 @@ class Settings:
                     for entry in config["filesToExtract"]:
                         self.files.append(FileEntry(pattern = entry["pattern"], finalPath = entry["finalPath"], renameTo = entry["renameTo"], symLinkPath = entry["symLinkPath"]))
                 except Exception as exception:
-                    self.SettingsInitError(f"Error while extracting config data from '{configFileName}':\n{exception}")
+                    raise self.SettingsInitError(f"Error while extracting config data from '{configFileName}': {exception}")
 
         self.printer = _SameLinePrinter()
         self.checkUserExistance()
@@ -246,7 +246,7 @@ def getArchivePath(settings, remoteFolder):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessery. Should run under 'sudo'.")
+    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessery. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
     parser.add_argument("-c", "--config", default="installCollectorConfig.json", help="path to config file")
     args = parser.parse_args()
     settings = None
