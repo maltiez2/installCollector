@@ -6,6 +6,7 @@ import pwd
 import json
 import shutil
 import tarfile
+import argparse
 import datetime
 import subprocess
 
@@ -38,18 +39,16 @@ class Settings:
         ]
     }
 
-    configFileName = "installCollectorConfig.json"
-
     llvmPattern = r".*/[^/]*llvm[^/]*$"
 
-    def __init__(self):
-        if not Path(self.configFileName).exists():
-            with open(self.configFileName, 'w') as configFile:
+    def __init__(self, configFileName):
+        if not Path(configFileName).exists():
+            with open(configFileName, 'w') as configFile:
                 json.dump(self.defaultSettings, configFile)
-                shutil.chown(self.configFileName, os.getlogin())
-                self.SettingsInitError(f"Default config file '{self.configFileName}' was created, edit it before starting script")
+                shutil.chown(configFileName, os.getlogin())
+                self.SettingsInitError(f"Default config file '{configFileName}' was created, edit it before starting script")
         else:
-            with open(self.configFileName, 'r') as configFile:
+            with open(configFileName, 'r') as configFile:
                 config = json.load(configFile)
                 try:
                     self.collectorVersion         = config["collectorVersion"]
@@ -62,7 +61,7 @@ class Settings:
                     for entry in config["filesToExtract"]:
                         self.files.append(FileEntry(pattern = entry["pattern"], finalPath = entry["finalPath"], renameTo = entry["renameTo"], symLinkPath = entry["symLinkPath"]))
                 except Exception as exception:
-                    self.SettingsInitError(f"Error while extracting config data from '{self.configFileName}':\n{exception}")
+                    self.SettingsInitError(f"Error while extracting config data from '{configFileName}':\n{exception}")
 
         self.printer = _SameLinePrinter()
         self.checkUserExistance()
@@ -237,8 +236,13 @@ def getArchivePath(settings, remoteFolder):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessery. Should run under 'sudo'.")
+    parser.add_argument("-c", "--config", default="installCollectorConfig.json", help="path to config file")
+    args = parser.parse_args()
+    settings = None
+
     try:
-        settings = Settings()
+        settings = Settings(configFileName=args.config)
     except Settings.SettingsInitError as err:
         print(err)
         return err
