@@ -54,7 +54,7 @@ class Settings:
     def __init__(self, configFileName):
         if not Path(configFileName).exists():
             with open(configFileName, 'w') as configFile:
-                json.dump(self.defaultSettings, configFile)
+                json.dump(self.defaultSettings, configFile, indent=4)
                 shutil.chown(configFileName, os.getlogin())
                 raise self.SettingsInitError(f"Default config file '{configFileName}' was created, edit it before starting script")
         else:
