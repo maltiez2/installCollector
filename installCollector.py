@@ -28,6 +28,16 @@ class Settings:
         pass
 
     defaultSettings = {
+        "description" : [
+            "setting: llvm - Extract from archive with or whithout 'llvm' in it name",
+            "setting: changeOwnerToCurrentUser - Change owner of extracted files to current user",
+            "setting: changeOwnerTo - If not empty string and previous setting is 'false' then change owner of extracted files to this user",
+            "setting: filesToExtract - list of files information containing:",
+            "                          pattern : regex for files in archive",
+            "                          finalpath : folder to extract to",
+            "                          renameTo : if not empty string - rename file after extraction",
+            "                          symLinkPath : if not empty string - create symLink to extracted file with stated name and path"
+        ],
         "collectorVersion" : "",
         "osVersion" : "",
         "llvm" : False,
@@ -46,7 +56,7 @@ class Settings:
             with open(configFileName, 'w') as configFile:
                 json.dump(self.defaultSettings, configFile)
                 shutil.chown(configFileName, os.getlogin())
-                self.SettingsInitError(f"Default config file '{configFileName}' was created, edit it before starting script")
+                raise self.SettingsInitError(f"Default config file '{configFileName}' was created, edit it before starting script")
         else:
             with open(configFileName, 'r') as configFile:
                 config = json.load(configFile)
