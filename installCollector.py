@@ -251,7 +251,7 @@ def getArchivePath(settings, remoteFolder):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extracting files stated in config, renaming and creating symlinks if necessary. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
+    parser = argparse.ArgumentParser(description="Require 'keyutils' and 'cifs-utils'. Extracting files stated in config, renaming and creating symlinks if necessary. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
     parser.add_argument("-c", "--config", default="installCollectorConfig.json", help="path to config file")
     args = parser.parse_args()
     settings = None
