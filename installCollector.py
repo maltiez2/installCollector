@@ -153,6 +153,7 @@ class RemoteFolder:
             return self.localFolder
         else:
             os.rmdir(self.localFolder)
+            ettings.printer.print("Could not mount remote folder.")
             return None
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -245,6 +246,8 @@ def getArchivePath(settings, remoteFolder):
             return archiveFile
         elif not settings.llvm and not settings.llvmRegex.match(f'{archiveFile}'):
             return archiveFile
+
+    settings.printer.print("Could not find archive, try changeing llvm setting.")
     return None
 
 
