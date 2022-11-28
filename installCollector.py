@@ -51,7 +51,7 @@ class Settings:
 
     llvmPattern = r".*/[^/]*llvm[^/]*$"
 
-    def __init__(self, configFileName):
+    def __init__(self, configFileName, detailedLog=False):
         if not Path(configFileName).exists():
             with open(configFileName, 'w') as configFile:
                 json.dump(self.defaultSettings, configFile, indent=4)
@@ -73,7 +73,7 @@ class Settings:
                 except Exception as exception:
                     raise self.SettingsInitError(f"Error while extracting config data from '{configFileName}': {exception}")
 
-        self.printer = _SameLinePrinter()
+        self.printer = _SameLinePrinter(detailedLog)
         self.checkUserExistance()
         self.compileRegexes()
 
@@ -107,9 +107,13 @@ class _Singleton(type):
 
 
 class _SameLinePrinter(metaclass=_Singleton):
-    def __init__(self):
+    def __init__(self, newLine = False):
         self._maxSize = 0
         self._stopped = True
+        if newLine:
+            self.newLine = '\n'
+        else:
+            self.newLine = '\r'
 
     def print(self, printString):
         printStringLength = len(printString)
@@ -117,7 +121,7 @@ class _SameLinePrinter(metaclass=_Singleton):
             self._maxSize = printStringLength
         for i in range(self._maxSize - printStringLength):
             printString += " "
-        print(printString, end='\r')
+        print(printString, end=self.newLine)
         self._stopped = False
 
     def clear(self):
@@ -256,11 +260,12 @@ def getArchivePath(settings, remoteFolder):
 def main():
     parser = argparse.ArgumentParser(description="Require 'keyutils' and 'cifs-utils'. Extracting files stated in config, renaming and creating symlinks if necessary. Should run under 'sudo'. If config file does not exit such file will be created with default settings.")
     parser.add_argument("-c", "--config", default="installCollectorConfig.json", help="path to config file")
+    parser.add_argument("-d", "--detail", action='store_true', help="detailed log")
     args = parser.parse_args()
     settings = None
 
     try:
-        settings = Settings(configFileName=args.config)
+        settings = Settings(configFileName=args.config, detailedLog=args.detail)
     except Settings.SettingsInitError as err:
         print(err)
         return err
