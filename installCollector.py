@@ -157,7 +157,6 @@ class RemoteFolder:
             return self.localFolder
         else:
             os.rmdir(self.localFolder)
-            ettings.printer.print("Could not mount remote folder.")
             return None
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -278,6 +277,8 @@ def main():
                     extractor = FilesExtractor(settings, archive)
                     extractor.extract()
                     settings.printer.print(f"Files extracted: {extractor.filesProcessed} from '{archivePath}'")
+        else:
+            settings.printer.print("Could not mount remote folder.")
 
     settings.printer.stop()
 
